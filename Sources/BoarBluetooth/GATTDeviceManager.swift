@@ -34,8 +34,64 @@ extension CBManagerState:CustomStringConvertible
     }
 }
 
+extension CBPeripheralState:CustomStringConvertible
+{
+    public var description:String
+    {
+        switch self
+        {
+        case .connected:
+            return "connected"
+        case .connecting:
+            return "connecting"
+        case .disconnected:
+            return "disconnected"
+        case .disconnecting:
+            return "disconnecting"
+        @unknown default:
+            return "unknown"
+        }
+    }
+}
 
 
+public class GATTPeripheral:Hashable,ObservableObject
+{
+    public static func == ( lhs:GATTPeripheral, rhs:GATTPeripheral )->Bool
+    {
+        return lhs.identifier == rhs.identifier
+    }
+    
+    public func hash( into hasher: inout Hasher )
+    {
+        hasher.combine( identifier )
+    }
+    
+    public let peripheral:CBPeripheral
+    init( peripheral:CBPeripheral )
+    {
+        self.peripheral = peripheral
+        self.name = peripheral.title
+        self.isConnected = peripheral.state == .connected
+    }
+    
+    public var identifier:UUID
+    {
+        return peripheral.identifier
+    }
+    
+    @Published public var name:String
+    @Published public var isConnected:Bool
+    
+    func update( )
+    {
+        DispatchQueue.main.async
+        {
+            self.name = self.peripheral.title
+            self.isConnected = self.peripheral.state == .connected
+        }
+    }
+}
 
 open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject,CBCentralManagerDelegate where Services:ServiceDefinition,Characteristics:CharacteristicDefinition
 {
@@ -56,7 +112,16 @@ open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject
     
     @Published public var isReady:Bool = false
     @Published public var isScanning:Bool = false
-    @Published public var discoveredPeripherals:[CBPeripheral] = [ ]
+    
+    var discoveredPeripherals:Set<GATTPeripheral> = [ ]
+    {
+        didSet
+        {
+            peripherals = Array( discoveredPeripherals )
+        }
+    }
+    
+    @Published public var peripherals:[GATTPeripheral] = [ ]
     @Published public var selectedDevice:GATTDevice<Services,Characteristics>?
     {
         didSet
@@ -93,7 +158,7 @@ open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject
             return nil
         }
         
-        return central.retrievePeripherals(withIdentifiers:[ lastKnownPeripheralIdentifier ] ).first
+        return central.retrievePeripherals( withIdentifiers:[ lastKnownPeripheralIdentifier ] ).first
     }
     
     public func powerOn( )
@@ -174,13 +239,28 @@ open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject
     {
         DispatchQueue.main.async
         {
-            self.discoveredPeripherals.append( peripheral )
+            self.discoveredPeripherals.insert( .init( peripheral:peripheral ) )
+        }
+    }
+    
+    func updatePeripherals( )
+    {
+        for peripheral in discoveredPeripherals
+        {
+            peripheral.update( )
         }
     }
     
     public func centralManager( _ central:CBCentralManager, didConnect peripheral:CBPeripheral )
     {
         os_log( "connected %{public}@", log:log, type:.default, peripheral.title )
+        
+        DispatchQueue.main.async
+        {
+            self.discoveredPeripherals.insert( .init( peripheral:peripheral ) )
+        }
+        
+        updatePeripherals( )
         guard let selectedDevice = selectedDevice else
         {
             return
@@ -194,13 +274,21 @@ open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject
         selectedDevice.discover( )
         DispatchQueue.main.async
         {
-            selectedDevice.isConnected = true
+            selectedDevice.isConnectedSubject.value = true
         }
     }
+    
+    
     
     public func centralManager( _ central:CBCentralManager, didDisconnectPeripheral peripheral:CBPeripheral, error:Error? )
     {
         os_log( "disconnected %{public}@", log:log, type:.default, peripheral.title )
+        print( peripheral.state.description )
+        updatePeripherals( )
+        
+        
+        
+        
         guard let selectedDevice = selectedDevice else
         {
             return
@@ -213,7 +301,7 @@ open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject
         
         DispatchQueue.main.async
         {
-            selectedDevice.isConnected = false
+            selectedDevice.isConnectedSubject.value = false
         }
     }
 }

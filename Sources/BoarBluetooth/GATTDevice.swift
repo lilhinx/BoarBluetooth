@@ -13,10 +13,10 @@ import Combine
 
 
 
-public class GATTDevice<Services,Characteristics>:NSObject,ObservableObject,CBPeripheralDelegate where Services:ServiceDefinition,Characteristics:CharacteristicDefinition
+public class GATTDevice<Services,Characteristics>:NSObject,CBPeripheralDelegate where Services:ServiceDefinition,Characteristics:CharacteristicDefinition
 {
     private let log:OSLog = .init( subsystem:"BoarBluetooth", category:"GATTDevice" )
-    let peripheral:CBPeripheral
+    
     
     
     typealias CharacteristicSubject = CurrentValueSubject<CharacteristicModel?,Never>
@@ -35,6 +35,7 @@ public class GATTDevice<Services,Characteristics>:NSObject,ObservableObject,CBPe
         return subject( for:characteristic ).eraseToAnyPublisher( )
     }
     
+    let peripheral:CBPeripheral
     let readConfiguration:GATTReadConfiguration<Characteristics>
     init( peripheral:CBPeripheral, readConfiguration:GATTReadConfiguration<Characteristics> )
     {
@@ -44,7 +45,12 @@ public class GATTDevice<Services,Characteristics>:NSObject,ObservableObject,CBPe
         peripheral.delegate = self
     }
     
-    @Published public var isConnected:Bool = false
+    let isConnectedSubject:CurrentValueSubject<Bool,Never> = .init( false )
+    
+    public var isConnected:AnyPublisher<Bool,Never>
+    {
+        return isConnectedSubject.eraseToAnyPublisher( ) 
+    }
     
     
     
