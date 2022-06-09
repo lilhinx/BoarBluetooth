@@ -98,6 +98,8 @@ open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject
     private let log:OSLog = .init( subsystem:"BoarBluetooth", category:"GATTDeviceManager" )
     private let queue:DispatchQueue = .init( label:"boar.bluetooth.gatt-device-manager" )
     
+    public typealias Device = GATTDevice<Services,Characteristics>
+    
     private lazy var central:CBCentralManager =
     {
         return CBCentralManager.init( delegate:self, queue:queue, options:[ : ] )
@@ -122,11 +124,24 @@ open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject
     }
     
     @Published public var peripherals:[GATTPeripheral] = [ ]
-    @Published public var selectedDevice:GATTDevice<Services,Characteristics>?
+    @Published public var selectedDevice:Device?
     {
         didSet
         {
-            lastKnownPeripheralIdentifier = selectedDevice?.peripheral.identifier
+            print( "setting selected device" )
+            selectedDeviceID = selectedDevice?.peripheral.identifier
+        }
+    }
+    
+    @Published public var selectedDeviceID:UUID?
+    {
+        didSet
+        {
+            lastKnownPeripheralIdentifier = selectedDeviceID
+            if selectedDeviceID != selectedDevice?.peripheral.identifier
+            {
+                fatalError( "this isnt' supported yet" )
+            }
         }
     }
     
@@ -143,6 +158,7 @@ open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject
             {
                 return nil
             }
+            
             return UUID.init( uuidString:uuidString )
         }
         set
@@ -158,7 +174,11 @@ open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject
             return nil
         }
         
-        return central.retrievePeripherals( withIdentifiers:[ lastKnownPeripheralIdentifier ] ).first
+        guard let uuid = UUID( uuidString:lastKnownPeripheralIdentifier.uuidString ) else
+        {
+            return nil
+        }
+        return central.retrievePeripherals( withIdentifiers:[ uuid ] ).first
     }
     
     public func powerOn( )
@@ -171,6 +191,7 @@ open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject
         if let peripheral = lastKnownPeripheral
         {
             connect( peripheral:peripheral )
+            
             return
         }
         
@@ -211,11 +232,16 @@ open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject
     
     public func connect( peripheral:CBPeripheral )
     {
-        central.stopScan( )
-        central.connect( peripheral, options:[ : ] )
         DispatchQueue.main.async
         {
+            [weak self] in
+            guard let self = self else
+            {
+                return
+            }
             self.selectedDevice = .init( peripheral:peripheral, readConfiguration:self.readConfiguration )
+            self.central.stopScan( )
+            self.central.connect( peripheral, options:[ : ] )
         }
     }
     
@@ -261,6 +287,7 @@ open class GATTDeviceManager<Services,Characteristics>:NSObject,ObservableObject
         }
         
         updatePeripherals( )
+        print( "have we a selected device?" )
         guard let selectedDevice = selectedDevice else
         {
             return

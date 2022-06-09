@@ -35,8 +35,8 @@ public class GATTDevice<Services,Characteristics>:NSObject,CBPeripheralDelegate 
         return subject( for:characteristic ).eraseToAnyPublisher( )
     }
     
-    let peripheral:CBPeripheral
-    let readConfiguration:GATTReadConfiguration<Characteristics>
+    public let peripheral:CBPeripheral
+    public let readConfiguration:GATTReadConfiguration<Characteristics>
     init( peripheral:CBPeripheral, readConfiguration:GATTReadConfiguration<Characteristics> )
     {
         self.peripheral = peripheral
